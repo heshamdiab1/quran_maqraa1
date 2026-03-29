@@ -1,0 +1,780 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>متابعة تلاوة القرآن الكريم</title>
+
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Segoe UI', Tahoma, Arial, sans-serif;
+    direction: rtl;
+    background: #f5f5f0;
+    color: #1a1a1a;
+    min-height: 100vh;
+  }
+  .app { max-width: 820px; margin: 0 auto; padding: 1rem; }
+
+  .header {
+    text-align: center;
+    padding: 1.5rem 1rem 1rem;
+    background: white;
+    border-radius: 14px;
+    border: 0.5px solid #e0ddd4;
+    margin-bottom: 1rem;
+  }
+  .header h1 { font-size: 22px; font-weight: 500; color: #1a1a1a; }
+  .header p { font-size: 14px; color: #666; margin-top: 4px; }
+
+  .tab-row {
+    display: flex;
+    gap: 0;
+    background: white;
+    border-radius: 12px;
+    border: 0.5px solid #e0ddd4;
+    margin-bottom: 1rem;
+    overflow: hidden;
+    flex-wrap: wrap;
+  }
+  .tab {
+    flex: 1;
+    min-width: 80px;
+    padding: 10px 8px;
+    font-size: 13px;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: #888;
+    font-family: inherit;
+    border-bottom: 2.5px solid transparent;
+    transition: all 0.15s;
+  }
+  .tab.active { color: #1D9E75; border-bottom-color: #1D9E75; font-weight: 500; background: #f7fdf9; }
+  .tab:hover:not(.active) { background: #f9f9f7; }
+
+  .section { display: none; }
+  .section.active { display: block; }
+
+  .card {
+    background: white;
+    border: 0.5px solid #e0ddd4;
+    border-radius: 14px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .card-title {
+    font-size: 16px;
+    font-weight: 500;
+    color: #1a1a1a;
+    margin-bottom: 1rem;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .member-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+  }
+  .member-card {
+    background: #f5f5f0;
+    border-radius: 10px;
+    padding: 12px;
+    cursor: pointer;
+    border: 1.5px solid transparent;
+    transition: all 0.15s;
+    text-align: center;
+  }
+  .member-card:hover { border-color: #b0b0a8; }
+  .member-card.selected { border-color: #1D9E75; background: #E1F5EE; }
+  .member-card .mname { font-size: 15px; font-weight: 500; color: #1a1a1a; }
+  .member-card .mstatus { font-size: 12px; color: #888; margin-top: 4px; }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 9px 20px;
+    border-radius: 9px;
+    border: 0.5px solid #ccc;
+    background: white;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    color: #1a1a1a;
+    transition: background 0.1s;
+    font-family: inherit;
+  }
+  .btn:hover { background: #f5f5f0; }
+  .btn-green { background: #1D9E75; color: white; border-color: #1D9E75; font-size: 15px; padding: 12px 28px; }
+  .btn-green:hover { background: #0F6E56; }
+  .btn-red { background: #E24B4A; color: white; border-color: #E24B4A; font-size: 15px; padding: 12px 28px; }
+  .btn-red:hover { background: #A32D2D; }
+  .btn-row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+
+  .badge {
+    display: inline-block;
+    font-size: 12px;
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+  .badge-green { background: #E1F5EE; color: #0F6E56; }
+  .badge-red { background: #FCEBEB; color: #A32D2D; }
+  .badge-gray { background: #f0efe8; color: #666; }
+
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+    margin-bottom: 1rem;
+  }
+  .stat-box {
+    background: #f5f5f0;
+    border-radius: 10px;
+    padding: 14px;
+    text-align: center;
+  }
+  .stat-box .num { font-size: 30px; font-weight: 500; }
+  .stat-box .lbl { font-size: 12px; color: #888; margin-top: 3px; }
+
+  .today-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .today-table th {
+    font-weight: 500;
+    font-size: 12px;
+    color: #888;
+    border-bottom: 0.5px solid #e0ddd4;
+    padding: 7px 8px;
+    text-align: right;
+  }
+  .today-table td {
+    padding: 9px 8px;
+    border-bottom: 0.5px solid #f0efe8;
+    color: #1a1a1a;
+    vertical-align: middle;
+  }
+  .today-table tr:last-child td { border-bottom: none; }
+
+  .progress-row { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+  .progress-row .pname { min-width: 90px; font-size: 13px; font-weight: 500; }
+  .progress-bar-bg { flex: 1; height: 8px; background: #f0efe8; border-radius: 4px; overflow: hidden; }
+  .progress-bar-fill { height: 100%; background: #1D9E75; border-radius: 4px; transition: width 0.4s; }
+  .progress-count { font-size: 12px; color: #888; min-width: 44px; text-align: left; }
+
+  .report-area {
+    background: #f5f5f0;
+    border-radius: 10px;
+    padding: 14px;
+    font-size: 13px;
+    white-space: pre-wrap;
+    line-height: 1.9;
+    direction: rtl;
+    font-family: 'Courier New', monospace;
+    color: #1a1a1a;
+    max-height: 500px;
+    overflow-y: auto;
+  }
+
+  .input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 1rem; }
+  .register-date-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: -4px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .register-date-row .label {
+    font-size: 13px;
+    color: #666;
+  }
+
+  input[type=text] {
+    flex: 1;
+    padding: 9px 12px;
+    border-radius: 9px;
+    border: 0.5px solid #ccc;
+    background: white;
+    font-size: 14px;
+    color: #1a1a1a;
+    font-family: inherit;
+  }
+  input[type=text]:focus { outline: none; border-color: #1D9E75; }
+  select {
+    padding: 8px 12px;
+    border-radius: 9px;
+    border: 0.5px solid #ccc;
+    background: white;
+    font-size: 13px;
+    color: #1a1a1a;
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  .alert {
+    padding: 11px 14px;
+    border-radius: 9px;
+    font-size: 13px;
+    margin-top: 12px;
+    line-height: 1.6;
+  }
+  .alert-green { background: #E1F5EE; color: #0F6E56; }
+  .alert-red { background: #FCEBEB; color: #A32D2D; }
+  .alert-yellow { background: #fef9e7; color: #7d6608; }
+
+  .day-dot {
+    width: 26px;
+    height: 26px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 500;
+  }
+  .dot-yes { background: #E1F5EE; color: #0F6E56; }
+  .dot-no { background: #FCEBEB; color: #A32D2D; }
+  .dot-empty { background: #f0efe8; color: #aaa; }
+
+  .member-list-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 9px 0;
+    border-bottom: 0.5px solid #f0efe8;
+  }
+  .member-list-row:last-child { border-bottom: none; }
+
+  .loader {
+    text-align: center;
+    padding: 2rem;
+    color: #888;
+    font-size: 14px;
+  }
+
+  .sync-dot {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #1D9E75;
+    margin-left: 6px;
+    animation: pulse 2s infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.3; }
+  }
+
+  @media (max-width: 500px) {
+    .stats-grid { grid-template-columns: repeat(3,1fr); }
+    .member-grid { grid-template-columns: repeat(2, 1fr); }
+    .btn-green, .btn-red { font-size: 14px; padding: 10px 18px; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <div class="header">
+    <h1>📖 متابعة تلاوة القرآن الكريم</h1>
+    <p id="todayLabel">جاري التحميل...</p>
+  </div>
+
+  <div class="tab-row">
+    <button class="tab active" onclick="showTab('register',this)">تسجيل اليوم</button>
+    <button class="tab" onclick="showTab('today',this)">حال اليوم</button>
+    <button class="tab" onclick="showTab('progress',this)">تقدم الشهر</button>
+    <button class="tab" onclick="showTab('report',this)">التقرير</button>
+    <button class="tab" onclick="showTab('settings',this)">الأعضاء</button>
+  </div>
+
+  <!-- REGISTER -->
+  <div id="tab-register" class="section active">
+    <div class="card">
+      <div class="card-title">
+        اختر اسمك
+        <span class="sync-dot" title="متصل بالإنترنت"></span>
+      </div>
+      <div class="register-date-row">
+        <span class="label">اليوم المراد تعبئته:</span>
+        <select id="fillDateSelect" onchange="changeFillDate(this.value)"></select>
+      </div>
+      <div class="member-grid" id="memberGrid">
+        <div class="loader">جاري تحميل الأعضاء...</div>
+      </div>
+    </div>
+    <div class="card" id="answerCard" style="display:none;">
+      <div class="card-title" id="answerCardTitle">هل تلوت جزءك اليوم؟</div>
+      <div class="btn-row">
+        <button class="btn btn-green" onclick="submitAnswer('yes')">✓ نعم، قرأت</button>
+        <button class="btn btn-red" onclick="submitAnswer('no')">✗ لا، لم أقرأ</button>
+      </div>
+      <div id="answerFeedback"></div>
+    </div>
+  </div>
+
+  <!-- TODAY STATUS -->
+  <div id="tab-today" class="section">
+    <div class="card">
+      <div class="card-title">حال المجموعة اليوم</div>
+      <div class="stats-grid" id="todayStats">
+        <div class="stat-box"><div class="num" style="color:#1D9E75">—</div><div class="lbl">قرأ</div></div>
+        <div class="stat-box"><div class="num" style="color:#E24B4A">—</div><div class="lbl">لم يقرأ</div></div>
+        <div class="stat-box"><div class="num" style="color:#888">—</div><div class="lbl">لم يُجب</div></div>
+      </div>
+      <table class="today-table">
+        <thead><tr><th>الاسم</th><th>الحالة</th><th>وقت الإجابة</th></tr></thead>
+        <tbody id="todayBody"><tr><td colspan="3" class="loader">جاري التحميل...</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- PROGRESS -->
+  <div id="tab-progress" class="section">
+    <div class="card">
+      <div class="card-title">تقدم كل عضو هذا الشهر</div>
+      <div id="progressBars"><div class="loader">جاري التحميل...</div></div>
+      <div id="historySection" style="margin-top:1.5rem;"></div>
+    </div>
+  </div>
+
+  <!-- REPORT -->
+  <div id="tab-report" class="section">
+    <div class="card">
+      <div class="card-title">تقرير يومي جاهز للواتساب</div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
+        <select id="reportDate" onchange="renderReport()"></select>
+        <button class="btn" onclick="copyReport(event)">📋 نسخ للواتساب</button>
+      </div>
+      <div class="report-area" id="reportText">جاري التحميل...</div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="tab-settings" class="section">
+    <div class="card">
+      <div class="card-title">إدارة أعضاء المجموعة</div>
+      <div class="input-row">
+        <input type="text" id="newMemberName" placeholder="اسم العضو الجديد" />
+        <button class="btn btn-green" style="font-size:14px;padding:9px 16px;" onclick="addMember()">إضافة</button>
+      </div>
+      <div id="membersList"><div class="loader">جاري التحميل...</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title">⚙️ إعدادات الشهر</div>
+      <p style="font-size:13px;color:#888;margin-bottom:12px;">عند بداية شهر جديد، يمكن تصفير البيانات. البيانات القديمة ستُحذف نهائياً.</p>
+      <button class="btn" onclick="resetMonth()" style="color:#A32D2D;border-color:#f5c6c6;">🗑 تصفير بيانات الشهر</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ── Firebase Config ──────────────────────────────────────────────
+const firebaseConfig = {
+  apiKey: "AIzaSyD0XCPCWYEzJQRtqhP3DDjZOx2kurb0CbE",
+  authDomain: "quran-group1.firebaseapp.com",
+  projectId: "quran-group1",
+  storageBucket: "quran-group1.firebasestorage.app",
+  messagingSenderId: "359680655030",
+  appId: "1:359680655030:web:39ce92f5c9d8f624abb017"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ── State ────────────────────────────────────────────────────────
+let members = [];
+let answers = {};
+let selectedMember = null;
+let selectedFillDate = todayStr();
+
+// ── Helpers ──────────────────────────────────────────────────────
+function todayStr() {
+  return new Date().toISOString().slice(0,10);
+}
+function monthStr() {
+  return new Date().toISOString().slice(0,7);
+}
+function arabicDate(dateStr) {
+  const d = new Date(dateStr + 'T12:00:00');
+  return d.toLocaleDateString('ar-EG', {weekday:'long', year:'numeric', month:'long', day:'numeric'});
+}
+function nowTime() {
+  return new Date().toLocaleTimeString('ar-EG', {hour:'2-digit', minute:'2-digit'});
+}
+function daysInMonthSoFar() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = d.getMonth();
+  const today = d.getDate();
+  const days = [];
+  for(let i = 1; i <= today; i++) {
+    days.push(`${y}-${String(m+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`);
+  }
+  return days;
+}
+
+function getTargetDayLabel() {
+  return selectedFillDate === todayStr() ? 'اليوم' : arabicDate(selectedFillDate);
+}
+
+function buildSegmentBar(yesCount, noCount, emptyCount, total, width = 10) {
+  if(total <= 0) {
+    return '░'.repeat(width);
+  }
+  let yesBlocks = Math.round((yesCount / total) * width);
+  let noBlocks = Math.round((noCount / total) * width);
+  let emptyBlocks = width - yesBlocks - noBlocks;
+
+  if(emptyBlocks < 0) {
+    emptyBlocks = 0;
+    if(yesBlocks >= noBlocks) yesBlocks = width - noBlocks;
+    else noBlocks = width - yesBlocks;
+  }
+
+  return '🟩'.repeat(yesBlocks) + '🟥'.repeat(noBlocks) + '⬜'.repeat(emptyBlocks);
+}
+
+// ── Firestore: Members ───────────────────────────────────────────
+const membersDoc = db.collection('config').doc('members');
+
+async function loadMembers() {
+  const snap = await membersDoc.get();
+  if(snap.exists && snap.data().list) {
+    members = snap.data().list;
+  } else {
+    members = ['أحمد','محمد','خالد','عاصر','عمر','يوسف','عبدالله','سعد'];
+    await membersDoc.set({ list: members });
+  }
+}
+
+async function saveMembers() {
+  await membersDoc.set({ list: members });
+}
+
+// ── Firestore: Answers ───────────────────────────────────────────
+// Structure: collection "answers" / doc "YYYY-MM-DD" / field per member
+
+async function loadAnswersForMonth() {
+  answers = {};
+  const days = daysInMonthSoFar();
+  const promises = days.map(async d => {
+    const snap = await db.collection('answers').doc(d).get();
+    if(snap.exists) answers[d] = snap.data();
+    else answers[d] = {};
+  });
+  await Promise.all(promises);
+}
+
+async function saveAnswer(dateStr, memberName, value) {
+  const newTime = nowTime();
+  await db.collection('answers').doc(dateStr).set(
+    { [memberName]: { value, time: newTime } },
+    { merge: true }
+  );
+  if(!answers[dateStr]) answers[dateStr] = {};
+  answers[dateStr][memberName] = { value, time: newTime };
+}
+
+// ── Real-time listener for today ─────────────────────────────────
+function listenToday() {
+  db.collection('answers').doc(todayStr()).onSnapshot(snap => {
+    answers[todayStr()] = snap.exists ? snap.data() : {};
+    renderMemberGrid();
+    renderTodayTable();
+    renderProgressBars();
+    renderReport();
+  });
+}
+
+// ── Init ─────────────────────────────────────────────────────────
+async function init() {
+  document.getElementById('todayLabel').textContent = arabicDate(todayStr());
+  await loadMembers();
+  await loadAnswersForMonth();
+  selectedFillDate = todayStr();
+  renderAll();
+  listenToday();
+}
+
+function renderAll() {
+  renderFillDateSelect();
+  renderMemberGrid();
+  renderTodayTable();
+  renderProgressBars();
+  renderReportDateSelect();
+  renderReport();
+  renderMembersList();
+}
+
+// ── Render: Register date selector ───────────────────────────────
+function renderFillDateSelect() {
+  const sel = document.getElementById('fillDateSelect');
+  const days = daysInMonthSoFar();
+  const options = days.slice().reverse().map(d =>
+    `<option value="${d}" ${d === selectedFillDate ? 'selected' : ''}>${arabicDate(d)}</option>`
+  ).join('');
+  sel.innerHTML = options;
+
+  if(!days.includes(selectedFillDate)) {
+    selectedFillDate = todayStr();
+    sel.value = selectedFillDate;
+  }
+}
+
+function changeFillDate(dateStr) {
+  selectedFillDate = dateStr;
+  selectedMember = null;
+  document.getElementById('answerCard').style.display = 'none';
+  document.getElementById('answerFeedback').innerHTML = '';
+  renderMemberGrid();
+}
+
+// ── Render: Member Grid ──────────────────────────────────────────
+function renderMemberGrid() {
+  const g = document.getElementById('memberGrid');
+  const dayAnswers = answers[selectedFillDate] || {};
+  g.innerHTML = members.map(m => {
+    const ans = dayAnswers[m];
+    const sel = selectedMember === m ? 'selected' : '';
+    let statusText = 'لم يُجب بعد';
+    let statusStyle = '';
+    if(ans && ans.value === 'yes') { statusText = '✓ قرأ'; statusStyle = 'color:#0F6E56'; }
+    else if(ans && ans.value === 'no') { statusText = '✗ لم يقرأ'; statusStyle = 'color:#A32D2D'; }
+    return `<div class="member-card ${sel}" onclick="selectMember('${m}')">
+      <div class="mname">${m}</div>
+      <div class="mstatus" style="${statusStyle}">${statusText}</div>
+    </div>`;
+  }).join('');
+}
+
+function selectMember(name) {
+  selectedMember = name;
+  renderMemberGrid();
+  const card = document.getElementById('answerCard');
+  card.style.display = 'block';
+  document.getElementById('answerCardTitle').textContent = `${name} — هل تلوت جزءك في ${getTargetDayLabel()}؟`;
+  const ans = (answers[selectedFillDate] || {})[name];
+  const fb = document.getElementById('answerFeedback');
+  if(ans) {
+    fb.innerHTML = `<div class="alert alert-yellow">سبق وأجبت في ${getTargetDayLabel()}: <strong>${ans.value === 'yes' ? 'نعم، قرأت ✓' : 'لا، لم أقرأ ✗'}</strong> — يمكنك تغيير إجابتك.</div>`;
+  } else {
+    fb.innerHTML = '';
+  }
+}
+
+async function submitAnswer(val) {
+  if(!selectedMember || !selectedFillDate) return;
+  await saveAnswer(selectedFillDate, selectedMember, val);
+  const fb = document.getElementById('answerFeedback');
+  if(val === 'yes') {
+    fb.innerHTML = `<div class="alert alert-green">جزاك الله خيراً ${selectedMember}! سجّلنا أنك قرأت في ${getTargetDayLabel()} ✓</div>`;
+  } else {
+    fb.innerHTML = `<div class="alert alert-red">تم التسجيل ليوم ${getTargetDayLabel()}. لا بأس، غداً تعوّض بإذن الله 🤲</div>`;
+  }
+  renderAll();
+}
+
+// ── Render: Today Table ──────────────────────────────────────────
+function renderTodayTable() {
+  const todayAnswers = answers[todayStr()] || {};
+  let read = 0, notRead = 0, noAnswer = 0;
+  const rows = members.map(m => {
+    const ans = todayAnswers[m];
+    let badge = '', time = '—';
+    if(!ans) { badge = `<span class="badge badge-gray">لم يُجب بعد</span>`; noAnswer++; }
+    else if(ans.value === 'yes') { badge = `<span class="badge badge-green">قرأ ✓</span>`; read++; time = ans.time || '—'; }
+    else { badge = `<span class="badge badge-red">لم يقرأ ✗</span>`; notRead++; time = ans.time || '—'; }
+    return `<tr>
+      <td style="font-weight:500">${m}</td>
+      <td>${badge}</td>
+      <td style="color:#888;font-size:12px">${time}</td>
+    </tr>`;
+  }).join('');
+  document.getElementById('todayBody').innerHTML = rows || '<tr><td colspan="3" style="text-align:center;color:#aaa;padding:1rem;">لا يوجد أعضاء بعد</td></tr>';
+  document.getElementById('todayStats').innerHTML = `
+    <div class="stat-box"><div class="num" style="color:#1D9E75">${read}</div><div class="lbl">قرأ</div></div>
+    <div class="stat-box"><div class="num" style="color:#E24B4A">${notRead}</div><div class="lbl">لم يقرأ</div></div>
+    <div class="stat-box"><div class="num" style="color:#888">${noAnswer}</div><div class="lbl">لم يُجب</div></div>`;
+}
+
+// ── Render: Progress ─────────────────────────────────────────────
+function renderProgressBars() {
+  const days = daysInMonthSoFar();
+  const total = days.length;
+  const bars = members.map(m => {
+    let count = 0;
+    days.forEach(d => { const a = (answers[d] || {})[m]; if(a && a.value === 'yes') count++; });
+    const pct = total > 0 ? Math.round((count / total) * 100) : 0;
+    return `<div class="progress-row">
+      <div class="pname">${m}</div>
+      <div class="progress-bar-bg"><div class="progress-bar-fill" style="width:${pct}%"></div></div>
+      <div class="progress-count">${count}/${total}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('progressBars').innerHTML = bars || '<p style="color:#aaa;font-size:14px;">لا يوجد أعضاء بعد</p>';
+
+  const histHtml = members.map(m => {
+    const dots = days.map((d, i) => {
+      const ans = (answers[d] || {})[m];
+      if(!ans) return `<div class="day-dot dot-empty" title="يوم ${i+1}">${i+1}</div>`;
+      if(ans.value === 'yes') return `<div class="day-dot dot-yes" title="يوم ${i+1}">✓</div>`;
+      return `<div class="day-dot dot-no" title="يوم ${i+1}">✗</div>`;
+    }).join('');
+    return `<div style="margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:500;margin-bottom:5px;">${m}</div>
+      <div style="display:flex;flex-wrap:wrap;gap:4px;">${dots}</div>
+    </div>`;
+  }).join('');
+  document.getElementById('historySection').innerHTML = histHtml;
+}
+
+// ── Render: Report ───────────────────────────────────────────────
+function renderReportDateSelect() {
+  const sel = document.getElementById('reportDate');
+  const days = daysInMonthSoFar();
+  sel.innerHTML = days.slice().reverse().map(d =>
+    `<option value="${d}" ${d === todayStr() ? 'selected' : ''}>${arabicDate(d)}</option>`
+  ).join('');
+}
+
+function renderReport() {
+  const sel = document.getElementById('reportDate');
+  if(!sel) return;
+  const dateStr = sel.value || todayStr();
+  const dayAnswers = answers[dateStr] || {};
+  const days = daysInMonthSoFar();
+  const total = days.length;
+
+  const read = [], notRead = [], noAnswer = [];
+  members.forEach(m => {
+    const ans = dayAnswers[m];
+    if(!ans) noAnswer.push(m);
+    else if(ans.value === 'yes') read.push(m);
+    else notRead.push(m);
+  });
+
+  let txt = `📖 تقرير تلاوة القرآن الكريم\n`;
+  txt += `📅 ${arabicDate(dateStr)}\n`;
+  txt += `${'━'.repeat(28)}\n\n`;
+  txt += `✅ قرأ اليوم (${read.length}):\n`;
+  txt += read.length ? read.map(n => `   • ${n}`).join('\n') : '   — لا أحد';
+  txt += `\n\n❌ لم يقرأ اليوم (${notRead.length}):\n`;
+  txt += notRead.length ? notRead.map(n => `   • ${n}`).join('\n') : '   — لا أحد';
+  txt += `\n\n⏳ لم يُجب بعد (${noAnswer.length}):\n`;
+  txt += noAnswer.length ? noAnswer.map(n => `   • ${n}`).join('\n') : '   — الجميع أجاب';
+  txt += `\n\n${'━'.repeat(28)}\n📊 ملخص الشهر (نعم / لا / لم يجب) حتى الآن (${total} ${total === 1 ? 'يوم' : 'أيام'}):\n\n`;
+
+  members.forEach(m => {
+    let yesCount = 0;
+    let noCount = 0;
+
+    days.forEach(d => {
+      const a = (answers[d] || {})[m];
+      if(!a) return;
+      if(a.value === 'yes') yesCount++;
+      else if(a.value === 'no') noCount++;
+    });
+
+    const emptyCount = Math.max(0, total - yesCount - noCount);
+    const yesPct = total > 0 ? Math.round((yesCount / total) * 100) : 0;
+    const noPct = total > 0 ? Math.round((noCount / total) * 100) : 0;
+    const emptyPct = Math.max(0, 100 - yesPct - noPct);
+    const mixBar = buildSegmentBar(yesCount, noCount, emptyCount, total, 10);
+
+    txt += `${m}: ${mixBar}\n`;
+    txt += `   ✅ ${yesCount} (${yesPct}%) | ❌ ${noCount} (${noPct}%) | ⏳ ${emptyCount} (${emptyPct}%)\n`;
+  });
+
+  txt += `\n${'━'.repeat(28)}\nوفّقكم الله لتلاوة كتابه الكريم 🤲`;
+  document.getElementById('reportText').textContent = txt;
+}
+
+function copyReport(evt) {
+  const txt = document.getElementById('reportText').textContent;
+  navigator.clipboard.writeText(txt).then(() => {
+    const btn = evt ? evt.target : null;
+    if(!btn) return;
+    const orig = btn.textContent;
+    btn.textContent = '✓ تم النسخ!';
+    setTimeout(() => btn.textContent = orig, 2500);
+  });
+}
+
+// ── Settings ─────────────────────────────────────────────────────
+function renderMembersList() {
+  const div = document.getElementById('membersList');
+  if(members.length === 0) {
+    div.innerHTML = '<p style="color:#aaa;font-size:14px;">لا يوجد أعضاء بعد. أضف أعضاء من الأعلى.</p>';
+    return;
+  }
+  div.innerHTML = members.map((m, i) =>
+    `<div class="member-list-row">
+      <span style="font-size:14px;">${m}</span>
+      <button class="btn" onclick="removeMember(${i})" style="font-size:12px;padding:5px 12px;color:#A32D2D;border-color:#f5c6c6;">حذف</button>
+    </div>`
+  ).join('');
+}
+
+async function addMember() {
+  const inp = document.getElementById('newMemberName');
+  const name = inp.value.trim();
+  if(!name) return;
+  if(members.includes(name)) {
+    alert('هذا الاسم موجود بالفعل');
+    return;
+  }
+  members.push(name);
+  inp.value = '';
+  await saveMembers();
+  renderAll();
+}
+
+async function removeMember(i) {
+  if(!confirm(`هل تريد حذف "${members[i]}" من المجموعة؟`)) return;
+  members.splice(i, 1);
+  await saveMembers();
+  renderAll();
+}
+
+async function resetMonth() {
+  if(!confirm('هل أنت متأكد من تصفير جميع بيانات الشهر؟\nلا يمكن التراجع عن هذا الإجراء.')) return;
+  const days = daysInMonthSoFar();
+  const batch = db.batch();
+  days.forEach(d => {
+    const ref = db.collection('answers').doc(d);
+    batch.delete(ref);
+  });
+  await batch.commit();
+  answers = {};
+  selectedMember = null;
+  renderAll();
+  alert('تم تصفير البيانات بنجاح ✓');
+}
+
+// ── Tab switching ────────────────────────────────────────────────
+function showTab(name, el) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.getElementById('tab-' + name).classList.add('active');
+  el.classList.add('active');
+  if(name === 'report') { renderReportDateSelect(); renderReport(); }
+  if(name === 'progress') renderProgressBars();
+  if(name === 'today') renderTodayTable();
+  if(name === 'settings') renderMembersList();
+  if(name === 'register') { renderFillDateSelect(); renderMemberGrid(); }
+}
+
+// ── Start ────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>
