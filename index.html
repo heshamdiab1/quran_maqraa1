@@ -183,6 +183,19 @@
   }
 
   .input-row { display: flex; gap: 8px; align-items: center; margin-bottom: 1rem; }
+  .register-date-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    margin-top: -4px;
+    margin-bottom: 12px;
+    flex-wrap: wrap;
+  }
+  .register-date-row .label {
+    font-size: 13px;
+    color: #666;
+  }
+
   input[type=text] {
     flex: 1;
     padding: 9px 12px;
@@ -290,6 +303,10 @@
         اختر اسمك
         <span class="sync-dot" title="متصل بالإنترنت"></span>
       </div>
+      <div class="register-date-row">
+        <span class="label">اليوم المراد تعبئته:</span>
+        <select id="fillDateSelect" onchange="changeFillDate(this.value)"></select>
+      </div>
       <div class="member-grid" id="memberGrid">
         <div class="loader">جاري تحميل الأعضاء...</div>
       </div>
@@ -297,8 +314,8 @@
     <div class="card" id="answerCard" style="display:none;">
       <div class="card-title" id="answerCardTitle">هل تلوت جزءك اليوم؟</div>
       <div class="btn-row">
-        <button class="btn btn-green" onclick="submitAnswer('yes')">✓ نعم، قرأت اليوم</button>
-        <button class="btn btn-red" onclick="submitAnswer('no')">✗ لا، لم أقرأ اليوم</button>
+        <button class="btn btn-green" onclick="submitAnswer('yes')">✓ نعم، قرأت</button>
+        <button class="btn btn-red" onclick="submitAnswer('no')">✗ لا، لم أقرأ</button>
       </div>
       <div id="answerFeedback"></div>
     </div>
@@ -335,7 +352,7 @@
       <div class="card-title">تقرير يومي جاهز للواتساب</div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px;">
         <select id="reportDate" onchange="renderReport()"></select>
-        <button class="btn" onclick="copyReport()">📋 نسخ للواتساب</button>
+        <button class="btn" onclick="copyReport(event)">📋 نسخ للواتساب</button>
       </div>
       <div class="report-area" id="reportText">جاري التحميل...</div>
     </div>
@@ -375,8 +392,9 @@ const db = firebase.firestore();
 
 // ── State ────────────────────────────────────────────────────────
 let members = [];
-let answers = {};  // { "2025-01-15": { "Ahmed": { value:"yes", time:"10:30" } } }
+let answers = {};
 let selectedMember = null;
+let selectedFillDate = todayStr();
 
 // ── Helpers ──────────────────────────────────────────────────────
 function todayStr() {
@@ -402,6 +420,27 @@ function daysInMonthSoFar() {
     days.push(`${y}-${String(m+1).padStart(2,'0')}-${String(i).padStart(2,'0')}`);
   }
   return days;
+}
+
+function getTargetDayLabel() {
+  return selectedFillDate === todayStr() ? 'اليوم' : arabicDate(selectedFillDate);
+}
+
+function buildSegmentBar(yesCount, noCount, emptyCount, total, width = 10) {
+  if(total <= 0) {
+    return '░'.repeat(width);
+  }
+  let yesBlocks = Math.round((yesCount / total) * width);
+  let noBlocks = Math.round((noCount / total) * width);
+  let emptyBlocks = width - yesBlocks - noBlocks;
+
+  if(emptyBlocks < 0) {
+    emptyBlocks = 0;
+    if(yesBlocks >= noBlocks) yesBlocks = width - noBlocks;
+    else noBlocks = width - yesBlocks;
+  }
+
+  return '🟩'.repeat(yesBlocks) + '🟥'.repeat(noBlocks) + '⬜'.repeat(emptyBlocks);
 }
 
 // ── Firestore: Members ───────────────────────────────────────────
@@ -436,12 +475,13 @@ async function loadAnswersForMonth() {
 }
 
 async function saveAnswer(dateStr, memberName, value) {
+  const newTime = nowTime();
   await db.collection('answers').doc(dateStr).set(
-    { [memberName]: { value, time: nowTime() } },
+    { [memberName]: { value, time: newTime } },
     { merge: true }
   );
   if(!answers[dateStr]) answers[dateStr] = {};
-  answers[dateStr][memberName] = { value, time: nowTime() };
+  answers[dateStr][memberName] = { value, time: newTime };
 }
 
 // ── Real-time listener for today ─────────────────────────────────
@@ -451,6 +491,7 @@ function listenToday() {
     renderMemberGrid();
     renderTodayTable();
     renderProgressBars();
+    renderReport();
   });
 }
 
@@ -459,11 +500,13 @@ async function init() {
   document.getElementById('todayLabel').textContent = arabicDate(todayStr());
   await loadMembers();
   await loadAnswersForMonth();
+  selectedFillDate = todayStr();
   renderAll();
   listenToday();
 }
 
 function renderAll() {
+  renderFillDateSelect();
   renderMemberGrid();
   renderTodayTable();
   renderProgressBars();
@@ -472,16 +515,39 @@ function renderAll() {
   renderMembersList();
 }
 
+// ── Render: Register date selector ───────────────────────────────
+function renderFillDateSelect() {
+  const sel = document.getElementById('fillDateSelect');
+  const days = daysInMonthSoFar();
+  const options = days.slice().reverse().map(d =>
+    `<option value="${d}" ${d === selectedFillDate ? 'selected' : ''}>${arabicDate(d)}</option>`
+  ).join('');
+  sel.innerHTML = options;
+
+  if(!days.includes(selectedFillDate)) {
+    selectedFillDate = todayStr();
+    sel.value = selectedFillDate;
+  }
+}
+
+function changeFillDate(dateStr) {
+  selectedFillDate = dateStr;
+  selectedMember = null;
+  document.getElementById('answerCard').style.display = 'none';
+  document.getElementById('answerFeedback').innerHTML = '';
+  renderMemberGrid();
+}
+
 // ── Render: Member Grid ──────────────────────────────────────────
 function renderMemberGrid() {
   const g = document.getElementById('memberGrid');
-  const todayAnswers = answers[todayStr()] || {};
+  const dayAnswers = answers[selectedFillDate] || {};
   g.innerHTML = members.map(m => {
-    const ans = todayAnswers[m];
+    const ans = dayAnswers[m];
     const sel = selectedMember === m ? 'selected' : '';
     let statusText = 'لم يُجب بعد';
     let statusStyle = '';
-    if(ans && ans.value === 'yes') { statusText = '✓ قرأ اليوم'; statusStyle = 'color:#0F6E56'; }
+    if(ans && ans.value === 'yes') { statusText = '✓ قرأ'; statusStyle = 'color:#0F6E56'; }
     else if(ans && ans.value === 'no') { statusText = '✗ لم يقرأ'; statusStyle = 'color:#A32D2D'; }
     return `<div class="member-card ${sel}" onclick="selectMember('${m}')">
       <div class="mname">${m}</div>
@@ -495,24 +561,24 @@ function selectMember(name) {
   renderMemberGrid();
   const card = document.getElementById('answerCard');
   card.style.display = 'block';
-  document.getElementById('answerCardTitle').textContent = `${name} — هل تلوت جزءك اليوم؟`;
-  const ans = (answers[todayStr()] || {})[name];
+  document.getElementById('answerCardTitle').textContent = `${name} — هل تلوت جزءك في ${getTargetDayLabel()}؟`;
+  const ans = (answers[selectedFillDate] || {})[name];
   const fb = document.getElementById('answerFeedback');
   if(ans) {
-    fb.innerHTML = `<div class="alert alert-yellow">سبق وأجبت اليوم: <strong>${ans.value === 'yes' ? 'نعم، قرأت ✓' : 'لا، لم أقرأ ✗'}</strong> — يمكنك تغيير إجابتك.</div>`;
+    fb.innerHTML = `<div class="alert alert-yellow">سبق وأجبت في ${getTargetDayLabel()}: <strong>${ans.value === 'yes' ? 'نعم، قرأت ✓' : 'لا، لم أقرأ ✗'}</strong> — يمكنك تغيير إجابتك.</div>`;
   } else {
     fb.innerHTML = '';
   }
 }
 
 async function submitAnswer(val) {
-  if(!selectedMember) return;
-  await saveAnswer(todayStr(), selectedMember, val);
+  if(!selectedMember || !selectedFillDate) return;
+  await saveAnswer(selectedFillDate, selectedMember, val);
   const fb = document.getElementById('answerFeedback');
   if(val === 'yes') {
-    fb.innerHTML = `<div class="alert alert-green">جزاك الله خيراً ${selectedMember}! سجّلنا أنك قرأت اليوم ✓</div>`;
+    fb.innerHTML = `<div class="alert alert-green">جزاك الله خيراً ${selectedMember}! سجّلنا أنك قرأت في ${getTargetDayLabel()} ✓</div>`;
   } else {
-    fb.innerHTML = `<div class="alert alert-red">تم التسجيل. لا بأس، غداً تعوّض بإذن الله 🤲</div>`;
+    fb.innerHTML = `<div class="alert alert-red">تم التسجيل ليوم ${getTargetDayLabel()}. لا بأس، غداً تعوّض بإذن الله 🤲</div>`;
   }
   renderAll();
 }
@@ -605,23 +671,38 @@ function renderReport() {
   txt += notRead.length ? notRead.map(n => `   • ${n}`).join('\n') : '   — لا أحد';
   txt += `\n\n⏳ لم يُجب بعد (${noAnswer.length}):\n`;
   txt += noAnswer.length ? noAnswer.map(n => `   • ${n}`).join('\n') : '   — الجميع أجاب';
-  txt += `\n\n${'━'.repeat(28)}\n📊 تقدم الشهر (${total} ${total === 1 ? 'يوم' : 'أيام'}):\n\n`;
+  txt += `\n\n${'━'.repeat(28)}\n📊 ملخص الشهر (نعم / لا / لم يجب) حتى الآن (${total} ${total === 1 ? 'يوم' : 'أيام'}):\n\n`;
+
   members.forEach(m => {
-    let cnt = 0;
-    days.forEach(d => { const a = (answers[d] || {})[m]; if(a && a.value === 'yes') cnt++; });
-    const pct = total > 0 ? Math.round((cnt / total) * 100) : 0;
-    const filled = Math.round(pct / 10);
-    const bar = '█'.repeat(filled) + '░'.repeat(10 - filled);
-    txt += `${m}: ${bar} ${pct}% (${cnt}/${total})\n`;
+    let yesCount = 0;
+    let noCount = 0;
+
+    days.forEach(d => {
+      const a = (answers[d] || {})[m];
+      if(!a) return;
+      if(a.value === 'yes') yesCount++;
+      else if(a.value === 'no') noCount++;
+    });
+
+    const emptyCount = Math.max(0, total - yesCount - noCount);
+    const yesPct = total > 0 ? Math.round((yesCount / total) * 100) : 0;
+    const noPct = total > 0 ? Math.round((noCount / total) * 100) : 0;
+    const emptyPct = Math.max(0, 100 - yesPct - noPct);
+    const mixBar = buildSegmentBar(yesCount, noCount, emptyCount, total, 10);
+
+    txt += `${m}: ${mixBar}\n`;
+    txt += `   ✅ ${yesCount} (${yesPct}%) | ❌ ${noCount} (${noPct}%) | ⏳ ${emptyCount} (${emptyPct}%)\n`;
   });
+
   txt += `\n${'━'.repeat(28)}\nوفّقكم الله لتلاوة كتابه الكريم 🤲`;
   document.getElementById('reportText').textContent = txt;
 }
 
-function copyReport() {
+function copyReport(evt) {
   const txt = document.getElementById('reportText').textContent;
   navigator.clipboard.writeText(txt).then(() => {
-    const btn = event.target;
+    const btn = evt ? evt.target : null;
+    if(!btn) return;
     const orig = btn.textContent;
     btn.textContent = '✓ تم النسخ!';
     setTimeout(() => btn.textContent = orig, 2500);
@@ -674,6 +755,7 @@ async function resetMonth() {
   });
   await batch.commit();
   answers = {};
+  selectedMember = null;
   renderAll();
   alert('تم تصفير البيانات بنجاح ✓');
 }
@@ -688,6 +770,7 @@ function showTab(name, el) {
   if(name === 'progress') renderProgressBars();
   if(name === 'today') renderTodayTable();
   if(name === 'settings') renderMembersList();
+  if(name === 'register') { renderFillDateSelect(); renderMemberGrid(); }
 }
 
 // ── Start ────────────────────────────────────────────────────────
